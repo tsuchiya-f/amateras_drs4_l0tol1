@@ -1,3 +1,11 @@
+/*************************************************************************
+  Read VDIF data (DRS4 for amateras)
+  How to compile
+   $ gcc -o ../bin/main main.c
+  How to use
+   $ cat /opt/drs4/storage/storagemodule1/test_01.vdif | ../bin/main > ../data/data.bin 2> ../data/main.log
+*************************************************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,9 +16,9 @@ struct vdif_header {
     unsigned int legacy:1;                  // 0 fixed
     unsigned int invalid:1;                 // valid=0, invalid=1
     //----------
-    unsigned int unassigned:2;              // 00 fixed
-    unsigned int ref_epoch:6;
     unsigned int data_frame:24;
+    unsigned int ref_epoch:6;
+    unsigned int unassigned:2;              // 00 fixed
     //----------
     unsigned int data_frame_len:24;
     unsigned int log_chns:5;
@@ -43,7 +51,7 @@ int main()
     
     unsigned int ui_data_sz;
         
-    fprintf(stderr, "seq number  invalid \n");
+    fprintf(stderr, "seq number  invalid  sec_epoch  ref_epoch  data_frame log_chns data_frame_len thred_id data_sz\n");
 
     while(1)
     {
