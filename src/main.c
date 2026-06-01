@@ -3,7 +3,7 @@
   How to compile
    $ gcc -o ../bin/main main.c
   How to use
-   $ cat /opt/drs4/storage/storagemodule1/test_01.vdif | ../bin/main > ../data/data.bin 2> ../data/main.log
+   $ cat /opt/drs4/storage/storagemodule1/test_01.vdif | ../bin/main > ../data/data.bin 2> ../log/data.log
 *************************************************************************/
 
 #include <stdio.h>
