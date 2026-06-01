@@ -29,3 +29,4 @@ typedef struct hvdif_header_type_def
 } vdif_header_type;
 
 void vdif_output_log(vdif_header_type vdif_header);
+void vdif_output_log_line(vdif_header_type vdif_header);
