@@ -10,44 +10,75 @@
 #include <stdlib.h>
 #include "../inc/vdif_util.h"
 
-// variables for VDIF data input
-#define N 256
-#define BAND_MAX 256
-float f_data[N*BAND_MAX];
+// DRS4 fixed setting
+#define N 256               // number of data (4Byte float)/packet
+#define DF 0.075            // Frequency step (MHz)
 
-int main(int argc, char *argv[])
+// DRS4 optional setting (AMATERAS Ver.1)
+#define INTEG 10            // Integration time [msec]
+#define BAND 46             // Number of Band (883.2MHz/19.2MHz)
+#define OFFSET 1200         // Frequency offset (90MHz/DF)
+
+// AMATERAS receiver Local Frequency (AMATERAS Ver.1)
+#define LO_FREQ 1050        // Local Frequency (MHz)
+
+// AMATERAS Frequency range (AMATERAS Ver.1)
+#define S_FREQ_L1 100       // Start frequency of L1 data [MHz]
+#define E_FREQ_L1 500       // End frequency of L1 data [MHz]
+
+#define S_FREQ_L0 OFFSET*DF             // Start frequency of L0 data [MHz]
+#define E_FREQ_L0 S_FREQ_L0+N*DF*BAND   // End frequency of L0 data [MHz]
+#define N_FREQ_L0 N*BAND                // Number of frequency of L0 data
+
+float f_data[N_FREQ_L0];
+float f_freq[N_FREQ_L0];
+float f_freq_rh[N_FREQ_L0];
+float f_freq_lh[N_FREQ_L0];
+
+int main()
 {
-    unsigned int ui_integ;  // integration time [ms]: 1, 10, or 100
-    unsigned int ui_band;   // number of packet (or band) for one sweep data (unit of 19.2MHz = 75kHz x 256)
-    unsigned int ui_offset; // frequency offset (unit of 75kHz)
-
-    if (argc != 4)
-    {
-        fprintf(stderr, "Usage $%s integ band offset\n", argv[0]);
-        return 0;
-    }else{
-        sscanf(argv[1], "%d", &ui_integ);
-        sscanf(argv[2], "%d", &ui_band);
-        sscanf(argv[3], "%d", &ui_offset);
-        fprintf(stderr, "Integ time [ms] = %d\n", ui_integ);
-        fprintf(stderr, "Number of Band  = %d\n", ui_band);
-        fprintf(stderr, "Freq offset     = %d\n", ui_offset);
-    }
+    unsigned int ui_integ = INTEG;    // integration time [ms]: 1, 10, or 100
+    unsigned int ui_band = BAND;      // number of packet (or band) for one sweep data (unit of 19.2MHz = 75kHz x 256)
+    unsigned int ui_offset = OFFSET;  // frequency offset (unit of 75kHz)
 
     unsigned int seq_num[2];
     vdif_header_type hdr;
-    
-    unsigned int ui_data_sz;
-    int i, i_cnt=0;
-    float f_freq;
 
+    int i, i_cnt=0;
+
+    int n_freq_l0 = (int)((E_FREQ_L0 - S_FREQ_L0)/DF);
+    int idx_freq_rh_s = (int)((S_FREQ_L1 + DF*0.5 - S_FREQ_L0)/DF);
+    int idx_freq_rh_e = (int)((E_FREQ_L1 + DF*0.5 - S_FREQ_L0)/DF);
+    int idx_freq_lh_s = (int)((((LO_FREQ - (S_FREQ_L1 - DF*0.5))) - S_FREQ_L0)/DF);
+    int idx_freq_lh_e = (int)((((LO_FREQ - (E_FREQ_L1 - DF*0.5))) - S_FREQ_L0)/DF);
+    int n_freq_l1 = idx_freq_rh_e - idx_freq_rh_s + 1;
+
+    float f_data_rh;
+    float f_data_lh;    
+
+    fprintf(stderr, "RH start freq index : %d\n", idx_freq_rh_s);
+    fprintf(stderr, "RH end   freq index : %d\n", idx_freq_rh_e);
+    fprintf(stderr, "LH start freq index : %d\n", idx_freq_lh_s);
+    fprintf(stderr, "LH end   freq index : %d\n", idx_freq_lh_e);
+    fprintf(stderr, "N freq RH : %d\n", idx_freq_rh_e - idx_freq_rh_s + 1);
+    fprintf(stderr, "N freq LH : %d\n", idx_freq_lh_e - idx_freq_lh_s - 1);
+
+    for (i=0; i<N*ui_band; i++)
+    {
+      f_freq[i] = (float)(ui_offset+i)*DF;
+    }
+    for (i=0; i<n_freq_l1; i++)
+    {
+      f_freq_rh[i] = f_freq[idx_freq_rh_s + i];
+      f_freq_lh[i] = f_freq[idx_freq_lh_s - i];
+    }
+    
     while(1)
     {
 
         // read data (one sweep)
         for (i=0; i<ui_band; i++)
         {
-            if (feof(stdin)) break;
             // read sequence number from stdin
             fread(&seq_num, sizeof(seq_num), 1, stdin);
 
@@ -57,30 +88,37 @@ int main(int argc, char *argv[])
             vdif_output_log_line(hdr);
             //vdif_output_log(hdr);
 
-            // calculate data size in Byte
-            // sizeof(hdr)-32 * header size
-            ui_data_sz = hdr.data_frame_len * 8 - sizeof(hdr) - 8;
+            // read data (one packet)
+            fread(&f_data[N*i], sizeof(float), N, stdin);
 
-          fread(&f_data[256*i], sizeof(float), 256, stdin);
-        }
+            if (feof(stdin)) break;
+          }
  
-        for (i=0; i<256*ui_band; i++)
+        if (i_cnt < 2)
         {
-          f_freq = (float)ui_offset*0.075 + (float)(i + (i_cnt%ui_band)*256)*0.075;
-          fprintf(stdout, "%d %f %f\n", (int)(i_cnt/ui_band), f_freq, f_data[i]);
-        }  
+/*
+          for (i=0; i<N*ui_band; i++)
+          {
+              fprintf(stdout, "%d %f %f\n", (int)(i_cnt/ui_band), f_freq[i], f_data[i]);
+          }  
+*/
+          for (i=0; i<n_freq_l1; i++)
+          {
+            f_data_rh = f_data[idx_freq_rh_s + i];
+            f_data_lh = f_data[idx_freq_lh_s - i];
+            fprintf(stdout, "%d %f %f %f %f\n", (int)(i_cnt/ui_band), f_freq_rh[i], f_data_rh, f_freq_lh[i], f_data_lh);
+          }
+          fprintf(stdout, "\n");
+        }
 
         i_cnt++;
+/*
         if (i_cnt%ui_band == 0)
         {
           fprintf(stdout, "\n");
         }
-
-
-
-
-
-
+*/
+/*
         // read sequence number from stdin
         fread(&seq_num, 1, sizeof(seq_num), stdin);
 
@@ -98,6 +136,7 @@ int main(int argc, char *argv[])
 
         // terminate if end-of-file is detected
         if (feof(stdin)) break;
+*/
     }
 
     return 0;
