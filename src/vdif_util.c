@@ -64,3 +64,5 @@ void vdif_output_log_line(vdif_header_type vdif_header)
 
   return;
 }
+
+//---------------------------------------------------------------------------
