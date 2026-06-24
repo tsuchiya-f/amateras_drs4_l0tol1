@@ -391,7 +391,7 @@ int main()
         // read header from stdin
         fread(&hdr, sizeof(hdr), 1, stdin);
         // store the first VDIF header
-        if (i==0 && n_swp==0 & n_file==0) hdr0 = hdr;
+        if (i==0 && n_swp==0 && n_file==0) hdr0 = hdr;
 
         // read data (one packet)
         fread(&f_data[N*i], sizeof(float), N, stdin);
