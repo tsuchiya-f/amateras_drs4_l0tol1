@@ -28,5 +28,45 @@ typedef struct hvdif_header_type_def
 
 } vdif_header_type;
 
+int compress_low_data(
+  unsigned char *uc_out_rh,     // [out]  compressed RH spectrum data 
+  unsigned char *uc_out_lh,     // [out]  compressed LH spectrum data 
+  float *f_max,                 // [out]  maximum values in each RH, LF spectrum
+  int n,                        // [in]   number of data points
+  float *f_ave_rh,              // [in]   uncompressed RH spectrum data
+  float *f_ave_lh,              // [in]   uncompressed LH spectrum data
+  float bscale,                 // [in]   BSCALE
+  float crval);                  // [in]   CRVAL
+
+int compress_high_08bit_data(
+  unsigned char *uc_out_rh,     // [out]  compressed RH spectrum data 
+  unsigned char *uc_out_lh,     // [out]  compressed LH spectrum data 
+  int n,                        // [in]   number of data points
+  float *f_data_rh,             // [in]   uncompressed RH spectrum data
+  float *f_data_lh,             // [in]   uncompressed LH spectrum data
+  float *f_floor_rh,            // [in]   RH noise floor spectrum
+  float *f_floor_lh,            // [in]   LH noise floor spectrum
+  float bscale,                 // [in]   BSCALE
+  float crval);                  // [in]   CRVAL
+
+int get_average(
+  float *f_ave_rh,          // [in/out]  low-resolution averaged or compositted RH spectrum data
+  float *f_ave_lh,          // [in/out]  low-resolution averaged or compositted HH spectrum data
+  int n,                    // [in]      number of data points
+  int n_ave,                // [in]      number of average in frequency direction
+  int i_cmd,                // [in]      command 0 : composit spectra, 1 : get averaged spectra
+  float *f_data_rh,         // [in]      high-resolution RH spectrum data
+  float *f_data_lh,         // [in]      high-resolution LH spectrum data
+  float *f_floor_rh,        // [in]      high-resolution LH noise floor data
+  float *f_floor_lh,        // [in]      high-resolution LH noise floor data
+  unsigned int *n_sum);     // [in/out]  numbre of composit
+
+int get_noise_floor(
+  float *f_floor_rh,         // [out]     high-resolution RH noise floor data
+  float *f_floor_lh,         // [out]     high-resolution LH noise floor data
+  unsigned int n);           // [in]      number of data
+
 void vdif_output_log(vdif_header_type vdif_header);
 void vdif_output_log_line(vdif_header_type vdif_header);
+
+int write_header(FILE *fp, vdif_header_type hdr, int nt, unsigned int nf);
