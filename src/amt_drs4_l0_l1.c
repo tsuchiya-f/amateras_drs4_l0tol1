@@ -116,8 +116,8 @@ int main()
     FILE *fp_lh_low;
 
     // open low-resolution binnary data
-    fp_rh_low  = fopen("/Volumes/Untitled/drs4/data/rh_low.bin",  "wb");
-    fp_lh_low  = fopen("/Volumes/Untitled/drs4/data/lh_low.bin",  "wb");
+    fp_rh_low  = fopen("data/rh_low.bin",  "wb");
+    fp_lh_low  = fopen("data/lh_low.bin",  "wb");
 
     // initialize variables
     int n_swp = 0;                   // number of sweep
@@ -208,8 +208,8 @@ int main()
       if (n_swp == 0)
       {
         char fname_rh[1024], fname_lh[1024];
-        sprintf(fname_rh, "/Volumes/Untitled/drs4/data/rh_high_%04d.bin",n_file);
-        sprintf(fname_lh, "/Volumes/Untitled/drs4/data/lh_high_%04d.bin",n_file);
+        sprintf(fname_rh, "data/rh_high_%04d.bin",n_file);
+        sprintf(fname_lh, "data/lh_high_%04d.bin",n_file);
         fp_rh_high = fopen(fname_rh, "wb");
         fp_lh_high = fopen(fname_lh, "wb");
         n_file ++;
