@@ -10,62 +10,98 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <math.h>
-#include <fitsio.h>
+#include <time.h>
 
 #include "vdif_util.h"
+#include "amt_drs4_l0_l1.h"
 
-// DRS4 fixed setting
-#define N 256               // number of data (4Byte float)/packet
-#define DF 0.075            // Frequency step (MHz)
+// Processing option
+//#define INSERT_DUMMY
 
-// DRS4 optional setting (AMATERAS Ver.1)
-#define INTEG 10            // Integration time [msec] (1, 10, or 100)
-#define BAND 46             // Number of Band (883.2MHz/19.2MHz) for one sweep (unit of 19.2MHz = 75kHz x 256)
-#define OFFSET 1200         // Frequency offset (90MHz/DF) (unit of 75kHz)
+// ----------------------------------------------------------------------
+// set Fits header
+//
+// return value : 0 if no error
+// ----------------------------------------------------------------------
+int set_fits_header(
+    fits_header_type *fits_hdr,
+    vdif_header_type hdr,
+    int bitpix,
+    unsigned int nt,
+    unsigned int nf,
+    float df,
+    float dt,
+    float start_freq
+  )
+{
 
-// AMATERAS receiver Local Frequency (AMATERAS Ver.1)
-#define LO_FREQ 1050        // Local Frequency (MHz)
+  // find UNIX time
+  time_t unix_time;
+  vdif2unixtime(hdr.ref_epoch, hdr.second_epoch, &unix_time);
 
-// AMATERAS Frequency range (AMATERAS Ver.1)
-#define S_FREQ_L1 100       // Start frequency of L1 data [MHz]
-#define E_FREQ_L1 500       // End frequency of L1 data [MHz]
-#define N_AVE_FREQ 13       // Number of average in freqneucy direction (75 kHz to 975 kHz)
-#define BSCALE 0.1
-#define CRVAL  -3
-#define SPLIT_SEC 60        // time duaration to split the high-resolution data in second
+  struct tm *time_info = gmtime(&unix_time);
 
-#define S_FREQ_L0 OFFSET*DF             // Start frequency of L0 data [MHz]
-#define E_FREQ_L0 S_FREQ_L0+N*DF*BAND   // End frequency of L0 data [MHz]
-#define N_FREQ_L0 N*BAND                // Number of frequency of L0 data
-#define N_FREQ_L1 N_FREQ_L0/2           // Number of frequency of L1 data (approximate value)
+  if (time_info == NULL) {
+    fprintf(stdout, "Error: Conversion failed in set_fits_header");
+    return 1;
+  }
 
-float f_data[N_FREQ_L0];                // Level 0 spectrum data
-float f_freq_L0[N_FREQ_L0];             // Level 0 frequency data
-float f_freq_L1[N_FREQ_L0];             // Level 1 frequency data (high resolution)
-float f_freq_L1_ave[N_FREQ_L0];         // Level 1 frequency data (averaged low resolution)
+  // date observation starts UT (yyyy-mm-dd)
+  fits_hdr->date_obs[0] = time_info->tm_year + 1900;
+  fits_hdr->date_obs[1] = time_info->tm_mon;
+  fits_hdr->date_obs[2] = time_info->tm_mday;
+  // time observation starts UT (hh:nn:ss)
+  fits_hdr->time_obs[0] = time_info->tm_hour;
+  fits_hdr->time_obs[1] = time_info->tm_min;
+  fits_hdr->time_obs[2] = time_info->tm_sec;
 
-unsigned int index_rh[N_FREQ_L1];       // index to map Level 0 data to Level 1 RH data
-unsigned int index_lh[N_FREQ_L1];       // index to map Level 0 data to Level 1 LH data
-float f_data_rh[N_FREQ_L1];             // Level 1 spectrum data (RH, high resolution)
-float f_data_lh[N_FREQ_L1];             // Level 1 spectrum data (LH, high resolution)
-// composited spectra
-float f_ave_rh[N_FREQ_L1];              // Level 1 spectrum data (RH, low resolution)
-float f_ave_lh[N_FREQ_L1];              // Level 1 spectrum data (LH, low resolution)
-// noise floor spectra
-float f_floor_rh[N_FREQ_L1];            // Level 1 noise floor spectrum data (RH, high resolution)
-float f_floor_lh[N_FREQ_L1];            // Level 1 noise floor spectrum data (LH, high resolution)
-// dummy spectrum
-float f_data_nan[N_FREQ_L1];            // Level 1 dummy spectrum data (filled with NaN)
-// output buffer
-unsigned char uc_out_rh[N_FREQ_L1];
-unsigned char uc_out_lh[N_FREQ_L1];
+  time_info->tm_sec += (int)(dt * nt);
+  timegm(time_info);
+  // date observation ends UT   (yyyy-mm-dd)
+  fits_hdr->date_end[0] = time_info->tm_year + 1900;
+  fits_hdr->date_end[1] = time_info->tm_mon;
+  fits_hdr->date_end[2] = time_info->tm_mday;
+  // time observation ends UT   (hh:nn:ss)
+  fits_hdr->time_end[0] = time_info->tm_hour;
+  fits_hdr->time_end[1] = time_info->tm_min;
+  fits_hdr->time_end[2] = time_info->tm_sec;
+
+  fits_hdr->bitpix = bitpix;
+  fits_hdr->naxis = 3;
+  fits_hdr->naxis1 = nt;
+  fits_hdr->naxis2 = nf;
+  fits_hdr->naxis3 = 2;
+  fits_hdr->bzero = BZERO;
+  fits_hdr->bscale = BSCALE;
+  fits_hdr->datamax = 254;
+  fits_hdr->datamin = 0;
+  fits_hdr->crpix1 = 0;
+  fits_hdr->crval1 = 0.0;
+  fits_hdr->cdelt1 = dt;
+  fits_hdr->crpix2 = 0;
+  fits_hdr->crval2 = start_freq;
+  fits_hdr->cdelt2 = df;
+  fits_hdr->crpix3 = 0;
+  fits_hdr->crval3 = 0.0;
+  fits_hdr->cdelt3 = 1.0;
+
+  // date of background data
+  // fits_hdr->date_bg[10];   
+
+  return 0;
+}
 
 // ----------------------------------------------------------------------
 // set frequency & L1 data index
 //
 // return value : 0
 // ----------------------------------------------------------------------
-int set_L1_data_index(unsigned int *index_rh, unsigned int *index_lh, float *f_freq_L1, unsigned int *n_freq_l1, unsigned int *n_freq_low)
+int set_L1_data_index(
+    unsigned int *index_rh,     // 
+    unsigned int *index_lh,     // 
+    float *f_freq_L1,           // 
+    unsigned int *n_freq_l1,    // 
+    unsigned int *n_freq_low)   // 
 {
   int i;
 
@@ -106,6 +142,9 @@ int main()
     unsigned int seq_num[2];
     vdif_header_type hdr;
     vdif_header_type hdr0;            // header data for the first data
+    vdif_header_type hdr_hr;          // header data for the first data (high-resolution data)
+
+    fits_header_type fits_hdr;
 
     unsigned int n_freq_l1;
     unsigned int n_freq_low;
@@ -120,9 +159,10 @@ int main()
     fp_lh_low  = fopen("data/lh_low.bin",  "wb");
 
     // initialize variables
-    int n_swp = 0;                   // number of sweep
+    int idx_start = 0;
+    int n_swp = 0;                   // number of sweep count
     int n_file = 0;                  // number of file (high-resolution data)
-    int idx_swp, idx_swp_prev = 0;   // sweep index (sweep number since observation start)
+    int idx_swp_prev = 0;            // sweep index (sweep number since observation start)
     int idx_sec, idx_sec_prev = 0;   // second index (second since observation start)
     unsigned int n_sum = 0;          // number of composited spectra
     // dummy spectrum
@@ -143,11 +183,11 @@ int main()
     // -----------------------------------
     i_ret = get_noise_floor(f_floor_rh, f_floor_lh, n_freq_l1);
 
-    while(1)
+    while(!feof(stdin))
     {
 
       // -----------------------------------
-      // read L0 data (one sweep data)
+      // (1-1) read L0 data (one sweep data)
       // -----------------------------------
       for (i=0; i<BAND; i++)
       {
@@ -157,26 +197,29 @@ int main()
         // read header from stdin
         fread(&hdr, sizeof(hdr), 1, stdin);
         // store the first VDIF header
-        if (i==0 && n_swp==0 && n_file==0) hdr0 = hdr;
+        if (idx_start == 0) hdr0 = hdr;
 
         // read data (one packet)
         fread(&f_data[N*i], sizeof(float), N, stdin);
 
       }
-      if (feof(stdin)) break;
- 
-      // -----------------------------------
-      // set sweep & second indies (indies since observation start)
-      // -----------------------------------
-      // sweep index : update every sweep
-      idx_swp = (hdr.second_epoch - hdr0.second_epoch) * (1000 / INTEG) + (hdr.data_frame_num - hdr0.data_frame_num)/BAND;
-      // second index : update every second
-      idx_sec = hdr.second_epoch - hdr0.second_epoch;
-
-//      if (idx_swp > 12000) break;
+//      if (feof(stdin)) break;
 
       // -----------------------------------
-      // store one sweep data (for L1 data) 
+      // (1-2) wait until tm_sec = 0
+      // -----------------------------------
+      if (idx_start == 0)
+      {
+        time_t unix_time;
+        vdif2unixtime(hdr.ref_epoch, hdr.second_epoch, &unix_time);
+        struct tm *time_info = gmtime(&unix_time);
+        // fprintf(stdout, "sec = %d\n", time_info->tm_sec);
+        if (time_info->tm_sec != 0) continue;
+      }
+      idx_start = 1;
+
+      // -----------------------------------
+      // (2-1) store one sweep data (for L1 data) 
       // -----------------------------------
       for (i=0; i<n_freq_l1; i++)
       {
@@ -184,7 +227,9 @@ int main()
         f_data_lh[i] = f_data[index_lh[i]]; 
       }
 
-/*
+#ifdef INSERT_DUMMY
+      // sweep index : update every sweep
+      int idx_swp = (hdr.second_epoch - hdr0.second_epoch) * (1000 / INTEG) + (hdr.data_frame_num - hdr0.data_frame_num)/BAND;
       // write dummy data if data skip happends
       int n_dummy = idx_swp - idx_swp_prev - 1;
       idx_swp_prev = idx_swp;
@@ -194,42 +239,64 @@ int main()
 
         for (i=0; i<n_dummy; i++)
         {
-          memset(uc_out_rh, 0, sizeof(uc_out_rh)); 
+          memset(uc_out_rh, DUMMY_UC_DATA, sizeof(uc_out_rh)); 
           fwrite(uc_out_rh, sizeof(unsigned char), n_freq_l1, fp_rh_high);
           fwrite(uc_out_rh, sizeof(unsigned char), n_freq_l1, fp_lh_high);
           n_swp ++;
         }
       }
-*/
+#endif
 
       // -----------------------------------
-      // write high-resolution data.
+      // (2-2) write high-resolution data.
       // -----------------------------------
       if (n_swp == 0)
       {
-        char fname_rh[1024], fname_lh[1024];
-        sprintf(fname_rh, "data/rh_high_%04d.bin",n_file);
-        sprintf(fname_lh, "data/lh_high_%04d.bin",n_file);
-        fp_rh_high = fopen(fname_rh, "wb");
-        fp_lh_high = fopen(fname_lh, "wb");
-        n_file ++;
+        time_t unix_time;
+        vdif2unixtime(hdr.ref_epoch, hdr.second_epoch, &unix_time);
+        struct tm *time_info = gmtime(&unix_time);
+        fprintf(stdout, "write high-resolution data at t=%d\n", time_info->tm_sec);
+        hdr_hr = hdr;
+
+        // open high-resolution data file
+        fp_rh_high = fopen("data/rh_high.bin", "wb");
+        fp_lh_high = fopen("data/lh_high.bin", "wb");
       }
 
-      i_ret = compress_high_08bit_data(uc_out_rh, uc_out_lh, n_freq_l1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, BSCALE, CRVAL);
+      i_ret = compress_high_08bit_data(uc_out_rh, uc_out_lh, n_freq_l1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, BSCALE, BZERO);
       fwrite(uc_out_rh, sizeof(unsigned char), n_freq_l1, fp_rh_high);
       fwrite(uc_out_lh, sizeof(unsigned char), n_freq_l1, fp_lh_high);
       n_swp ++;
 
+      // close high-resolution data file
       if (n_swp == SPLIT_SEC * (1000 / INTEG))
       {
         fclose(fp_rh_high);
         fclose(fp_lh_high);
+        
+        // create high-resolution data header file
+        int bitpix = 8;
+        unsigned int nt = n_swp;
+        float dt = (float)INTEG / 1000.0;
+        i_ret = set_fits_header(&fits_hdr, hdr_hr, bitpix, nt, n_freq_l1, DF, dt, f_freq_L1[0]);
+
+        // create fits file
+        int mode = 1; // high-resolution
+        create_fits("data/rh_high.bin", "data/lh_high.bin", fits_hdr, mode, FITS_VER, FITS_SVER);
+/*
+        fp_rh_high = fopen("data/hdr_high.asc", "w");
+        i_ret = write_fits_header(fp_rh_high, fits_hdr);
+        fclose(fp_rh_high);
+*/
+        n_file ++;
         n_swp = 0;
       }
 
       // -----------------------------------
-      // write low-resolution data.
+      // (3-1) write low-resolution data.
       // -----------------------------------
+      // second index : update every second
+      idx_sec = hdr.second_epoch - hdr0.second_epoch;
       if (idx_sec != idx_sec_prev)
       {
         idx_sec_prev = idx_sec;
@@ -238,19 +305,10 @@ int main()
         int n_ave = N_AVE_FREQ;
         i_ret = get_average(f_ave_rh, f_ave_lh, n_freq_l1, n_ave, 1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, &n_sum);
 
-        if (idx_sec < 2)
-        {
-          for (i=0; i<n_freq_low; i++)
-          {
-            fprintf(stdout, "%d %d %f %f\n", idx_sec, i, f_ave_rh[i], f_ave_lh[i]);
-          }
-          fprintf(stdout, "\n");
-        }
-
         // write low-resolution data
         int i_ovf;
         float f_max[2];
-        i_ovf = compress_low_data(uc_out_rh, uc_out_lh, f_max, n_freq_low, f_ave_rh, f_ave_lh, BSCALE, CRVAL);
+        i_ovf = compress_low_data(uc_out_rh, uc_out_lh, f_max, n_freq_low, f_ave_rh, f_ave_lh, BSCALE, BZERO);
         fwrite(uc_out_rh, sizeof(unsigned char), n_freq_low, fp_rh_low);
         fwrite(uc_out_lh, sizeof(unsigned char), n_freq_low, fp_lh_low);
 
@@ -262,6 +320,7 @@ int main()
         memset(f_ave_rh, 0, sizeof(f_ave_rh)); 
         memset(f_ave_lh, 0, sizeof(f_ave_lh)); 
       }
+
       // composit spectra
       int n_ave = N_AVE_FREQ;
       i_ret = get_average(f_ave_rh, f_ave_lh, n_freq_l1, n_ave, 0, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, &n_sum);
@@ -272,23 +331,25 @@ int main()
     fclose(fp_lh_low);
 
     // -----------------------------------
-    // open for ascii data (fits header)
+    // (3-2) open for ascii data (fits header for low-resolution data)
     // -----------------------------------
-    fp_rh_high = fopen("data/rh_high.asc", "w");
-    fp_lh_high = fopen("data/lh_high.asc", "w");
-    fp_rh_low  = fopen("data/rh_low.asc",  "w");
-    fp_lh_low  = fopen("data/lh_low.asc",  "w");
+    // create low-resolution data header file
+    int bitpix = 8;
+    unsigned int nt = idx_sec;
+    float dt = 1.0;
+    float df = DF * N_AVE_FREQ;
+    float freq_min = f_freq_L1[0] + df * 0.5;
+    i_ret = set_fits_header(&fits_hdr, hdr0, bitpix, nt, n_freq_low, df, dt, freq_min);
 
-    i_ret = write_header(fp_rh_high, hdr0, n_swp, n_freq_l1);
-    i_ret = write_header(fp_lh_high, hdr0, n_swp, n_freq_l1);
-    i_ret = write_header(fp_rh_low,  hdr0, idx_sec, n_freq_low);
-    i_ret = write_header(fp_lh_low,  hdr0, idx_sec, n_freq_low);
+    // create fits file
+    int mode = 0; // low-resolution
+    create_fits("data/rh_low.bin", "data/lh_low.bin", fits_hdr, mode, FITS_VER, FITS_SVER);
 
-    fclose(fp_rh_high);
-    fclose(fp_lh_high);
+/*
+    fp_rh_low = fopen("data/hdr_low.asc", "w");
+    i_ret = write_fits_header(fp_rh_low, fits_hdr);
     fclose(fp_rh_low);
-    fclose(fp_lh_low);
-
+*/
     return 0;
 
 }

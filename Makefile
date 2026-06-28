@@ -7,11 +7,13 @@ INCLUDES := -Iinc
 ARCH := $(shell uname -m)
 
 ifeq ($(ARCH), arm64)
-    CFLAGS  += -arch arm64 -I/opt/homebrew/include
-    LDFLAGS += -arch arm64 -L/opt/homebrew/lib -lcfitsio -lm 
+	INCLUDES += -I/opt/homebrew/include
+    CFLAGS  += -arch arm64
+    LDFLAGS += -L/opt/homebrew/lib -L/usr/local/opt/libomp/lib -lcfitsio -lm -lomp
 else
-    CFLAGS  += -I/usr/local/include
-    LDFLAGS += -L/usr/local/lib -lcfitsio -lm 
+	INCLUDES += -I/usr/local/include
+    CFLAGS  += 
+    LDFLAGS += -L/usr/local/lib -lcfitsio -lm -lomp
 endif
 
 # Directories
@@ -19,11 +21,11 @@ SRC_DIR := src
 BIN_DIR := bin
 
 amt_drs4_l0_l1: amt_drs4_l0_l1.o vdif_util.o
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(BIN_DIR)/amt_drs4_l0_l1 amt_drs4_l0_l1.o vdif_util.o $(LDFLAGS) 
+	$(CC) $(INCLUDES) $(CFLAGS) $(LDFLAGS) -o $(BIN_DIR)/amt_drs4_l0_l1 amt_drs4_l0_l1.o vdif_util.o
 amt_drs4_l0_l1.o:    $(SRC_DIR)/amt_drs4_l0_l1.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $(SRC_DIR)/amt_drs4_l0_l1.c $(LDFLAGS)
+	$(CC) $(INCLUDES) -c $(SRC_DIR)/amt_drs4_l0_l1.c
 vdif_util.o:    $(SRC_DIR)/vdif_util.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $(SRC_DIR)/vdif_util.c $(LDFLAGS)
+	$(CC) $(INCLUDES) -c $(SRC_DIR)/vdif_util.c
 
 # Clean up the bin directory
 clean:

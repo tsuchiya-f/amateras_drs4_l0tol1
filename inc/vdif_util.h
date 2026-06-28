@@ -1,5 +1,38 @@
+#define DUMMY_UC_DATA 255
+#define BLOCK_SIZE 32
+
+// ----------------------------------------------------------------------
+// sttucture for FITS header
+// ----------------------------------------------------------------------
+typedef struct fits_header_type_def
+{
+  int bitpix;         // bits per data value                             
+  int naxis;          // number of axes                                  
+  int naxis1;         // time axis                                               
+  int naxis2;         // frequency axis
+  int naxis3;         // Polarization. 0 is RCP and 1 is LCP             
+  int date_obs[3];    // date observation starts UT (yyyy,mm,dd)
+  int time_obs[4];    // time observation starts UT (hh,nn,ss,ms)
+  int date_end[3];    // date observation ends UT   (yyyy,mm,dd)
+  int time_end[4];    // time observation ends UT   (hh,nn,ss,ms)
+  float bzero;        // scaling offset
+  float bscale;       // scaling factor
+  float datamax;      // Minimum element in image
+  float datamin;      // Maximum element in image
+  int crpix1;         // reference pixel of axis 1                       
+  float crval1;       // value on axis 1 at the reference pixel          
+  float cdelt1;       // step between first and second elements in axis 1
+  int crpix2;         // reference pixel of axis 1                       
+  float crval2;       // value on axis 1 at the reference pixel          
+  float cdelt2;       // step between first and second elements in axis 1
+  int crpix3;         // reference pixel of axis 1                       
+  float crval3;       // value on axis 1 at the reference pixel          
+  float cdelt3;       // step between first and second elements in axis 1
+  int date_bg[3];     // date of background data   (hh,nn,ss,ms)
+} fits_header_type;  
+
 // sttucture for VDIF header
-typedef struct hvdif_header_type_def
+typedef struct vdif_header_type_def
 {
 
   unsigned int second_epoch:30;     //  Seconds from reference epoch
@@ -49,6 +82,8 @@ int compress_high_08bit_data(
   float bscale,                 // [in]   BSCALE
   float crval);                  // [in]   CRVAL
 
+int create_fits(char *file_rh, char *file_lh, fits_header_type fits_hdr, int mode, int ver, int sver);
+
 int get_average(
   float *f_ave_rh,          // [in/out]  low-resolution averaged or compositted RH spectrum data
   float *f_ave_lh,          // [in/out]  low-resolution averaged or compositted HH spectrum data
@@ -66,7 +101,14 @@ int get_noise_floor(
   float *f_floor_lh,         // [out]     high-resolution LH noise floor data
   unsigned int n);           // [in]      number of data
 
+int get_current_time(char *date_str);
+
+void transpose_optimized(unsigned char* uc_data, unsigned char* uc_data_r, unsigned char* uc_data_l, int m, int n);
+
+void vdif2unixtime(int ref_epoch, unsigned int vdif_seconds, time_t *unix_time);
+
 void vdif_output_log(vdif_header_type vdif_header);
 void vdif_output_log_line(vdif_header_type vdif_header);
 
+int write_fits_header(FILE *fp, fits_header_type fits_hdr);
 int write_header(FILE *fp, vdif_header_type hdr, int nt, unsigned int nf);
