@@ -69,7 +69,18 @@ int compress_low_data(
   float *f_ave_rh,              // [in]   uncompressed RH spectrum data
   float *f_ave_lh,              // [in]   uncompressed LH spectrum data
   float bscale,                 // [in]   BSCALE
-  float crval);                  // [in]   CRVAL
+  float crval);                 // [in]   CRVAL
+
+int compress_high_16bit_data(
+  unsigned short *us_out_rh,    // [out]  compressed RH spectrum data 
+  unsigned short *us_out_lh,    // [out]  compressed LH spectrum data 
+  int n,                        // [in]   number of data points
+  float *f_data_rh,             // [in]   uncompressed RH spectrum data
+  float *f_data_lh,             // [in]   uncompressed LH spectrum data
+  float *f_floor_rh,            // [in]   RH noise floor spectrum
+  float *f_floor_lh,            // [in]   LH noise floor spectrum
+  float bscale,                 // [in]   BSCALE
+  float bzero);                 // [in]   BZERO
 
 int compress_high_08bit_data(
   unsigned char *uc_out_rh,     // [out]  compressed RH spectrum data 
@@ -80,9 +91,10 @@ int compress_high_08bit_data(
   float *f_floor_rh,            // [in]   RH noise floor spectrum
   float *f_floor_lh,            // [in]   LH noise floor spectrum
   float bscale,                 // [in]   BSCALE
-  float crval);                  // [in]   CRVAL
+  float bzero);                 // [in]   BZERO
 
 int create_fits(char *file_rh, char *file_lh, fits_header_type fits_hdr, int mode, int ver, int sver);
+int create_fits_16bit(char *file_rh, char *file_lh, fits_header_type fits_hdr, int mode, int ver, int sver);
 
 int get_average(
   float *f_ave_rh,          // [in/out]  low-resolution averaged or compositted RH spectrum data
@@ -103,7 +115,20 @@ int get_noise_floor(
 
 int get_current_time(char *date_str);
 
+int set_fits_header(
+  fits_header_type *fits_hdr,
+  vdif_header_type hdr,
+  int bitpix,
+  float bscale,
+  float bzero,
+  unsigned int nt,
+  unsigned int nf,
+  float df,
+  float dt,
+  float start_freq);
+
 void transpose_optimized(unsigned char* uc_data, unsigned char* uc_data_r, unsigned char* uc_data_l, int m, int n);
+void transpose_optimized_16bit(unsigned short* us_data, unsigned short* us_data_r, unsigned short* us_data_l, int m, int n);
 
 void vdif2unixtime(int ref_epoch, unsigned int vdif_seconds, time_t *unix_time);
 

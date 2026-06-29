@@ -17,7 +17,8 @@
 #define S_FREQ_L1 100       // Start frequency of L1 data [MHz]
 #define E_FREQ_L1 500       // End frequency of L1 data [MHz]
 #define N_AVE_FREQ 13       // Number of average in freqneucy direction (75 kHz to 975 kHz)
-#define BSCALE 0.1
+#define BSCALE   0.1
+#define BSCALE16 0.001
 #define BZERO  -3
 #define SPLIT_SEC 60        // time duaration to split the high-resolution data in second
 
@@ -46,4 +47,6 @@ float f_data_nan[N_FREQ_L1];            // Level 1 dummy spectrum data (filled w
 // output buffer
 unsigned char uc_out_rh[N_FREQ_L1];
 unsigned char uc_out_lh[N_FREQ_L1];
+unsigned short us_out_rh[N_FREQ_L1];
+unsigned short us_out_lh[N_FREQ_L1];
 

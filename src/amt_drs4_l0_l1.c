@@ -19,79 +19,6 @@
 //#define INSERT_DUMMY
 
 // ----------------------------------------------------------------------
-// set Fits header
-//
-// return value : 0 if no error
-// ----------------------------------------------------------------------
-int set_fits_header(
-    fits_header_type *fits_hdr,
-    vdif_header_type hdr,
-    int bitpix,
-    unsigned int nt,
-    unsigned int nf,
-    float df,
-    float dt,
-    float start_freq
-  )
-{
-
-  // find UNIX time
-  time_t unix_time;
-  vdif2unixtime(hdr.ref_epoch, hdr.second_epoch, &unix_time);
-
-  struct tm *time_info = gmtime(&unix_time);
-
-  if (time_info == NULL) {
-    fprintf(stdout, "Error: Conversion failed in set_fits_header");
-    return 1;
-  }
-
-  // date observation starts UT (yyyy-mm-dd)
-  fits_hdr->date_obs[0] = time_info->tm_year + 1900;
-  fits_hdr->date_obs[1] = time_info->tm_mon;
-  fits_hdr->date_obs[2] = time_info->tm_mday;
-  // time observation starts UT (hh:nn:ss)
-  fits_hdr->time_obs[0] = time_info->tm_hour;
-  fits_hdr->time_obs[1] = time_info->tm_min;
-  fits_hdr->time_obs[2] = time_info->tm_sec;
-
-  time_info->tm_sec += (int)(dt * nt);
-  timegm(time_info);
-  // date observation ends UT   (yyyy-mm-dd)
-  fits_hdr->date_end[0] = time_info->tm_year + 1900;
-  fits_hdr->date_end[1] = time_info->tm_mon;
-  fits_hdr->date_end[2] = time_info->tm_mday;
-  // time observation ends UT   (hh:nn:ss)
-  fits_hdr->time_end[0] = time_info->tm_hour;
-  fits_hdr->time_end[1] = time_info->tm_min;
-  fits_hdr->time_end[2] = time_info->tm_sec;
-
-  fits_hdr->bitpix = bitpix;
-  fits_hdr->naxis = 3;
-  fits_hdr->naxis1 = nt;
-  fits_hdr->naxis2 = nf;
-  fits_hdr->naxis3 = 2;
-  fits_hdr->bzero = BZERO;
-  fits_hdr->bscale = BSCALE;
-  fits_hdr->datamax = 254;
-  fits_hdr->datamin = 0;
-  fits_hdr->crpix1 = 0;
-  fits_hdr->crval1 = 0.0;
-  fits_hdr->cdelt1 = dt;
-  fits_hdr->crpix2 = 0;
-  fits_hdr->crval2 = start_freq;
-  fits_hdr->cdelt2 = df;
-  fits_hdr->crpix3 = 0;
-  fits_hdr->crval3 = 0.0;
-  fits_hdr->cdelt3 = 1.0;
-
-  // date of background data
-  // fits_hdr->date_bg[10];   
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------
 // set frequency & L1 data index
 //
 // return value : 0
@@ -151,6 +78,8 @@ int main()
 
     FILE *fp_rh_high;
     FILE *fp_lh_high;
+    FILE *fp_rh_high16;
+    FILE *fp_lh_high16;
     FILE *fp_rh_low;
     FILE *fp_lh_low;
 
@@ -164,6 +93,7 @@ int main()
     int n_file = 0;                  // number of file (high-resolution data)
     int idx_swp_prev = 0;            // sweep index (sweep number since observation start)
     int idx_sec, idx_sec_prev = 0;   // second index (second since observation start)
+    int ovf08 = 0;                   // number of overflow points in 8-bit high-resoluton data during 1-min.
     unsigned int n_sum = 0;          // number of composited spectra
     // dummy spectrum
     memset(f_data_nan, nanf("0"), sizeof(f_data_nan)); 
@@ -203,7 +133,6 @@ int main()
         fread(&f_data[N*i], sizeof(float), N, stdin);
 
       }
-//      if (feof(stdin)) break;
 
       // -----------------------------------
       // (1-2) wait until tm_sec = 0
@@ -261,11 +190,19 @@ int main()
         // open high-resolution data file
         fp_rh_high = fopen("data/rh_high.bin", "wb");
         fp_lh_high = fopen("data/lh_high.bin", "wb");
+        fp_rh_high16 = fopen("data/rh_high16.bin", "wb");
+        fp_lh_high16 = fopen("data/lh_high16.bin", "wb");
       }
 
-      i_ret = compress_high_08bit_data(uc_out_rh, uc_out_lh, n_freq_l1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, BSCALE, BZERO);
+      int i_ovf = compress_high_08bit_data(uc_out_rh, uc_out_lh, n_freq_l1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, BSCALE, BZERO);
+      ovf08 += i_ovf;
       fwrite(uc_out_rh, sizeof(unsigned char), n_freq_l1, fp_rh_high);
       fwrite(uc_out_lh, sizeof(unsigned char), n_freq_l1, fp_lh_high);
+
+      i_ret = compress_high_16bit_data(us_out_rh, us_out_lh, n_freq_l1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, BSCALE16, BZERO);
+      fwrite(us_out_rh, sizeof(unsigned short), n_freq_l1, fp_rh_high16);
+      fwrite(us_out_lh, sizeof(unsigned short), n_freq_l1, fp_lh_high16);
+
       n_swp ++;
 
       // close high-resolution data file
@@ -273,16 +210,38 @@ int main()
       {
         fclose(fp_rh_high);
         fclose(fp_lh_high);
+        fclose(fp_rh_high16);
+        fclose(fp_lh_high16);
         
-        // create high-resolution data header file
+        // create high-resolution data header file (8-bit)
         int bitpix = 8;
         unsigned int nt = n_swp;
         float dt = (float)INTEG / 1000.0;
-        i_ret = set_fits_header(&fits_hdr, hdr_hr, bitpix, nt, n_freq_l1, DF, dt, f_freq_L1[0]);
+        float bscale = BSCALE;
+        float bzero = BZERO;
+        i_ret = set_fits_header(&fits_hdr, hdr_hr, bitpix, bscale, bzero, nt, n_freq_l1, DF, dt, f_freq_L1[0]);
 
         // create fits file
         int mode = 1; // high-resolution
         create_fits("data/rh_high.bin", "data/lh_high.bin", fits_hdr, mode, FITS_VER, FITS_SVER);
+
+        // create high-resolution data header file (16-bit)
+        float ovf_rate = (float)ovf08 / (float)(n_freq_l1 * n_swp * 2);
+//        if (ovf_rate > 0.3)
+        if (ovf_rate > 0.0)
+        {
+          int bitpix = 16;
+          unsigned int nt = n_swp;
+          float dt = (float)INTEG / 1000.0;
+          float bscale = BSCALE16;
+          float bzero = BZERO;
+          i_ret = set_fits_header(&fits_hdr, hdr_hr, bitpix, bscale, bzero, nt, n_freq_l1, DF, dt, f_freq_L1[0]);
+
+          // create fits file
+          int mode = 1; // high-resolution
+          create_fits_16bit("data/rh_high16.bin", "data/lh_high16.bin", fits_hdr, mode, FITS_VER, FITS_SVER);
+        }
+
 /*
         fp_rh_high = fopen("data/hdr_high.asc", "w");
         i_ret = write_fits_header(fp_rh_high, fits_hdr);
@@ -290,6 +249,7 @@ int main()
 */
         n_file ++;
         n_swp = 0;
+        ovf08 = 0;
       }
 
       // -----------------------------------
@@ -306,14 +266,14 @@ int main()
         i_ret = get_average(f_ave_rh, f_ave_lh, n_freq_l1, n_ave, 1, f_data_rh, f_data_lh, f_floor_rh, f_floor_lh, &n_sum);
 
         // write low-resolution data
-        int i_ovf;
         float f_max[2];
-        i_ovf = compress_low_data(uc_out_rh, uc_out_lh, f_max, n_freq_low, f_ave_rh, f_ave_lh, BSCALE, BZERO);
+        int i_ovf = compress_low_data(uc_out_rh, uc_out_lh, f_max, n_freq_low, f_ave_rh, f_ave_lh, BSCALE, BZERO);
         fwrite(uc_out_rh, sizeof(unsigned char), n_freq_low, fp_rh_low);
         fwrite(uc_out_lh, sizeof(unsigned char), n_freq_low, fp_lh_low);
 
         // write log
-        fprintf(stderr, "%6d [sec] Epoch: %2d Second: %8d n_sum = %3d / ovf = %3d Max = %4.1f(RH) %4.1f(LH)\n", idx_sec, hdr.ref_epoch, hdr.second_epoch, n_sum, i_ovf, f_max[0], f_max[1]);
+        float ovf_rate = (float)i_ovf / (float)(n_freq_low * 2) * 100.0;  // [%]
+        fprintf(stderr, "%6d [sec] Epoch: %2d Second: %8d n_sum = %3d / ovf = %5.1f Max = %4.1f(RH) %4.1f(LH)\n", idx_sec, hdr.ref_epoch, hdr.second_epoch, n_sum, ovf_rate, f_max[0], f_max[1]);
 
         // reset spectra
         n_sum = 0;
@@ -339,7 +299,9 @@ int main()
     float dt = 1.0;
     float df = DF * N_AVE_FREQ;
     float freq_min = f_freq_L1[0] + df * 0.5;
-    i_ret = set_fits_header(&fits_hdr, hdr0, bitpix, nt, n_freq_low, df, dt, freq_min);
+    float bscale = BSCALE;
+    float bzero = BZERO;
+    i_ret = set_fits_header(&fits_hdr, hdr0, bitpix, bscale, bzero, nt, n_freq_low, df, dt, freq_min);
 
     // create fits file
     int mode = 0; // low-resolution
