@@ -639,7 +639,7 @@ int set_fits_header(
 
   // date observation starts UT (yyyy-mm-dd)
   fits_hdr->date_obs[0] = time_info->tm_year + 1900;
-  fits_hdr->date_obs[1] = time_info->tm_mon;
+  fits_hdr->date_obs[1] = time_info->tm_mon + 1;
   fits_hdr->date_obs[2] = time_info->tm_mday;
   // time observation starts UT (hh:nn:ss)
   fits_hdr->time_obs[0] = time_info->tm_hour;
@@ -650,7 +650,7 @@ int set_fits_header(
   timegm(time_info);
   // date observation ends UT   (yyyy-mm-dd)
   fits_hdr->date_end[0] = time_info->tm_year + 1900;
-  fits_hdr->date_end[1] = time_info->tm_mon;
+  fits_hdr->date_end[1] = time_info->tm_mon + 1;
   fits_hdr->date_end[2] = time_info->tm_mday;
   // time observation ends UT   (hh:nn:ss)
   fits_hdr->time_end[0] = time_info->tm_hour;
