@@ -1,5 +1,6 @@
 bin
 data
+data_tmp
 log
 misc
 *.o

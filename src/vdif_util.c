@@ -637,6 +637,7 @@ int set_fits_header(
     return 1;
   }
 
+
   // date observation starts UT (yyyy-mm-dd)
   fits_hdr->date_obs[0] = time_info->tm_year + 1900;
   fits_hdr->date_obs[1] = time_info->tm_mon + 1;
